@@ -1,0 +1,20 @@
+{
+  "name": "kahoot-clone",
+  "version": "1.0.0",
+  "description": "A simple Kahoot-style real-time quiz app (React + Node/Socket.IO), deployable on AWS.",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm --prefix client install",
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "start": "node server/index.js",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "npm --prefix client run dev"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
