@@ -6,12 +6,15 @@ const { Server } = require("socket.io");
 const { GameManager } = require("./game");
 const sampleQuiz = require("./sampleQuiz");
 const { store, normalizeQuizContent } = require("./quizStore");
+const { resultsStore } = require("./resultsStore");
+const { csvToQuiz, toCSV } = require("./csv");
 
 const PORT = process.env.PORT || 3000;
 const CLIENT_DIST = path.join(__dirname, "..", "client", "dist");
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+app.use(express.text({ type: "text/csv", limit: "2mb" }));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }, // relaxed for dev; in prod the client is served from the same origin
@@ -50,6 +53,72 @@ app.post("/api/quizzes", (req, res) => {
 app.delete("/api/quizzes/:id", (req, res) => {
   const removed = store.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: "Quiz not found." });
+  res.json({ ok: true });
+});
+
+// Import a quiz from CSV. Body may be raw CSV text (Content-Type: text/csv)
+// or JSON { title, csv }. Parses, validates, saves, and returns the new quiz.
+app.post("/api/quizzes/import", (req, res) => {
+  let csvText = "";
+  let title = "Imported Quiz";
+  if (typeof req.body === "string") {
+    csvText = req.body;
+    title = String(req.query.title || title);
+  } else if (req.body && typeof req.body.csv === "string") {
+    csvText = req.body.csv;
+    title = String(req.body.title || title);
+  }
+  if (!csvText.trim()) {
+    return res.status(400).json({ error: "No CSV content provided." });
+  }
+
+  const { quiz, warnings } = csvToQuiz(csvText, title);
+  if (!quiz) {
+    return res.status(400).json({
+      error: "Could not import. " + (warnings[0] || "No valid questions found."),
+      warnings,
+    });
+  }
+  const saved = store.save(quiz);
+  if (!saved) {
+    return res.status(400).json({ error: "Import produced an invalid quiz." });
+  }
+  res.json({ quiz: saved, warnings });
+});
+
+// --- REST API: saved game results (history) ---
+app.get("/api/results", (_req, res) => {
+  res.json({ results: resultsStore.list() });
+});
+
+app.get("/api/results/:id", (req, res) => {
+  const result = resultsStore.get(req.params.id);
+  if (!result) return res.status(404).json({ error: "Result not found." });
+  res.json({ result });
+});
+
+// Download one game's results as a CSV file.
+app.get("/api/results/:id/csv", (req, res) => {
+  const result = resultsStore.get(req.params.id);
+  if (!result) return res.status(404).json({ error: "Result not found." });
+
+  const rows = [["Rank", "Name", "Score"]];
+  for (const s of result.standings) {
+    rows.push([s.rank, s.name, s.score]);
+  }
+  const csv = toCSV(rows);
+  const safeTitle = result.quizTitle.replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="results_${safeTitle}_${result.id.slice(0, 8)}.csv"`
+  );
+  res.send(csv);
+});
+
+app.delete("/api/results/:id", (req, res) => {
+  const removed = resultsStore.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: "Result not found." });
   res.json({ ok: true });
 });
 
@@ -108,8 +177,18 @@ io.on("connection", (socket) => {
     }
     const question = game.nextQuestion();
     if (!question) {
-      // Game finished.
-      io.to(game.pin).emit("game:ended", { leaderboard: game.leaderboard(100) });
+      // Game finished — persist the final results before ending.
+      const standings = game.leaderboard(1000);
+      try {
+        resultsStore.save({
+          quizTitle: game.quiz.title,
+          standings,
+          playerCount: game.players.size,
+        });
+      } catch (e) {
+        console.error("Failed to save results:", e.message);
+      }
+      io.to(game.pin).emit("game:ended", { leaderboard: standings });
       return ack && ack({ ok: true, ended: true });
     }
     io.to(game.pin).emit("question:show", question);

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 
 // Lists the host's saved quizzes (loaded from the server). Lets the host
 // go live with one, edit it, delete it, or create a new one.
-export default function MyQuizzes({ onGoLive, onCreate, onEdit, onExit }) {
+export default function MyQuizzes({ onGoLive, onCreate, onImport, onEdit, onExit }) {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -47,9 +47,14 @@ export default function MyQuizzes({ onGoLive, onCreate, onEdit, onExit }) {
         </div>
 
         <div style={{ height: 12 }} />
-        <button className="btn-primary" onClick={onCreate}>
-          + Create new quiz
-        </button>
+        <div className="row wrap">
+          <button className="btn-primary" style={{ width: "auto", flex: 1 }} onClick={onCreate}>
+            + Create new quiz
+          </button>
+          <button className="btn-secondary" onClick={onImport}>
+            ⬆ Import from sheet (CSV)
+          </button>
+        </div>
 
         {error && <div className="error">{error}</div>}
 

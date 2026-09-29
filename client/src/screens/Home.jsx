@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function Home({ onHost, onJoin }) {
+export default function Home({ onHost, onJoin, onResults }) {
   return (
     <div className="screen center">
       <h1 className="brand">QuizHost</h1>
@@ -12,6 +12,10 @@ export default function Home({ onHost, onJoin }) {
         <div style={{ height: 12 }} />
         <button className="btn-secondary" style={{ width: "100%" }} onClick={onJoin}>
           Join a quiz
+        </button>
+        <div style={{ height: 12 }} />
+        <button className="btn-ghost" style={{ width: "100%", color: "#46178f" }} onClick={onResults}>
+          Past results
         </button>
       </div>
     </div>

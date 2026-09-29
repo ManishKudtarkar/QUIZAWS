@@ -184,16 +184,16 @@ If you want `quiz.yourschool.com` with a padlock instead of a bare IP:
 
 ## Where your quizzes are stored on the instance
 
-Saved quizzes are written to `server/data/quizzes.json` inside the app folder on the instance (e.g. `~/quizhost/server/data/quizzes.json`). This file:
+Saved quizzes and game results are written to the `server/data/` folder inside the app on the instance (`~/quizhost/server/data/quizzes.json` and `results.json`). These files:
 
-- **survives** app restarts, `pm2 restart`, and instance **reboots**
-- is **lost** if you **terminate** the instance (terminate deletes the disk)
+- **survive** app restarts, `pm2 restart`, and instance **reboots**
+- are **lost** if you **terminate** the instance (terminate deletes the disk)
 
-To back them up, copy that file off the instance now and then:
+To back them up, copy the whole data folder off the instance now and then:
 
 ```bash
 # run this on your own machine (replace IP + key)
-scp -i Manish.pem ec2-user@<public-ip>:~/quizhost/server/data/quizzes.json ./quizzes-backup.json
+scp -i Manish.pem -r ec2-user@<public-ip>:~/quizhost/server/data ./quizhost-data-backup
 ```
 
 If you want quizzes stored durably outside the instance (so terminating the box doesn't lose them), the next step up is DynamoDB — ask and it can be wired in.

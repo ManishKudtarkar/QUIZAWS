@@ -377,3 +377,20 @@ button:disabled {
   word-break: break-all;
   max-width: 220px;
 }
+
+/* Import warnings (skipped rows) */
+.warn {
+  background: #fff4d6;
+  color: #7a5a00;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+code {
+  background: #eceaf5;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}

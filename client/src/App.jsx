@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import Home from "./screens/Home.jsx";
 import HostGame from "./screens/HostGame.jsx";
 import PlayerGame from "./screens/PlayerGame.jsx";
+import Results from "./screens/Results.jsx";
 
 // Top-level router. Keeps things simple with a small state machine:
 //   "home"   -> choose to host or join
@@ -23,5 +24,12 @@ export default function App() {
 
   if (mode === "host") return <HostGame onExit={() => setMode("home")} />;
   if (mode === "player") return <PlayerGame onExit={() => setMode("home")} />;
-  return <Home onHost={() => setMode("host")} onJoin={() => setMode("player")} />;
+  if (mode === "results") return <Results onExit={() => setMode("home")} />;
+  return (
+    <Home
+      onHost={() => setMode("host")}
+      onJoin={() => setMode("player")}
+      onResults={() => setMode("results")}
+    />
+  );
 }

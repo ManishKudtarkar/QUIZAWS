@@ -3,6 +3,7 @@ import { socket } from "../socket.js";
 import { SHAPES } from "../shapes.js";
 import QuizBuilder from "./QuizBuilder.jsx";
 import MyQuizzes from "./MyQuizzes.jsx";
+import ImportQuiz from "./ImportQuiz.jsx";
 import QRCode from "../components/QRCode.jsx";
 
 // Host flow phases:
@@ -116,11 +117,28 @@ export default function HostGame({ onExit }) {
           setEditId(null);
           setPhase("build");
         }}
+        onImport={() => setPhase("import")}
         onEdit={(id) => {
           setEditId(id);
           setPhase("edit");
         }}
         onExit={onExit}
+      />
+    );
+  }
+
+  if (phase === "import") {
+    return (
+      <ImportQuiz
+        onImported={(_quiz, warnings) => {
+          if (warnings && warnings.length) {
+            alert(
+              "Imported with some skipped rows:\n\n" + warnings.slice(0, 8).join("\n")
+            );
+          }
+          setPhase("list");
+        }}
+        onExit={() => setPhase("list")}
       />
     );
   }

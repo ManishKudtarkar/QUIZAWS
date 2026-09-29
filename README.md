@@ -7,9 +7,11 @@ Built to run as a single Node.js server (serves the web app + websockets), which
 ## Features
 
 - Host builds a quiz directly on the website (questions, up to 4 answers, mark the correct one, per-question time limit)
+- **Import a quiz from a CSV sheet** — prepare questions in Excel/Google Sheets, upload or paste, and the site builds the quiz (a downloadable template is provided)
 - **Quizzes are saved** and persist across refreshes and server restarts, so you build once and host anytime
 - **My Quizzes** list with Go Live, Edit, and Delete
 - Going live shows a **6-digit PIN and a QR code** — students scan the QR (or enter the PIN) to join
+- **Results are saved after every game** — a Past Results history shows who won, full standings, and a **CSV download**
 - Students join with a game PIN and a nickname — no accounts needed
 - Real-time question display and answering over WebSockets (Socket.IO)
 - Scoring rewards correct answers and speed (up to 1000 points per question), with answer streaks
@@ -28,10 +30,11 @@ There are two different kinds of data, stored differently:
 
 | Data | Where | Persists? |
 |---|---|---|
-| **Quizzes** you build | `server/data/quizzes.json` on disk | **Yes** — survives refresh and server restart |
-| **Live game state** (players, scores, current question) | server memory (RAM) | No — ends when the game ends or the server restarts |
+| **Quizzes** you build/import | `server/data/quizzes.json` on disk | **Yes** — survives refresh and server restart |
+| **Game results** (final standings, winner) | `server/data/results.json` on disk | **Yes** — saved automatically when a game ends |
+| **Live game state** (players, scores, current question) | server memory (RAM) | No — only during the game |
 
-So the quizzes you create are saved and reusable. The per-game scores are live-only; if you want to keep a record of results after a game, that's a separate feature (ask and it can be added — JSON file or DynamoDB).
+So your quizzes and your finished-game results are both saved and reusable. Only the in-progress game state is live-only.
 
 The `server/data/` folder is created automatically on first run and is git-ignored (your quizzes aren't committed to the repo).
 
@@ -44,8 +47,10 @@ The `server/data/` folder is created automatically on first run and is git-ignor
 │   ├── index.js          # Express + Socket.IO server + REST API, serves client/dist in prod
 │   ├── game.js           # Game + GameManager: rooms, PIN, scoring, leaderboard
 │   ├── quizStore.js      # JSON-file quiz storage (CRUD)
+│   ├── resultsStore.js   # JSON-file game-results storage
+│   ├── csv.js            # CSV parse/build (import quizzes, export results)
 │   ├── sampleQuiz.js     # default quiz fallback
-│   └── data/             # created at runtime; holds quizzes.json (git-ignored)
+│   └── data/             # created at runtime; quizzes.json + results.json (git-ignored)
 └── client/
     ├── index.html
     ├── vite.config.js    # dev proxy for /socket.io -> :3000
@@ -57,18 +62,45 @@ The `server/data/` folder is created automatically on first run and is git-ignor
         │   └── QRCode.jsx      # renders the join QR code
         └── screens/
             ├── Home.jsx
-            ├── MyQuizzes.jsx    # saved quizzes: Go Live / Edit / Delete / Create
+            ├── MyQuizzes.jsx    # saved quizzes: Go Live / Edit / Delete / Create / Import
             ├── QuizBuilder.jsx  # build/edit a quiz, saved to the server
+            ├── ImportQuiz.jsx   # import a quiz from a CSV sheet
+            ├── Results.jsx      # past results: history, standings, CSV download
             ├── HostGame.jsx     # lobby (PIN + QR), live questions, reveal, results
             └── PlayerGame.jsx   # join (PIN prefilled from QR), answer, see results
 ```
 
-## REST API (quizzes)
+## CSV import format
 
+One question per row. A header row is optional (auto-detected). Columns:
+
+```
+question,answer1,answer2,answer3,answer4,correct,timeLimit
+What is the capital of France?,London,Paris,Berlin,Madrid,2,20
+Which planet is the Red Planet?,Venus,Mars,Jupiter,,2,20
+```
+
+- `answer3` / `answer4` are optional — leave blank for 2- or 3-option questions.
+- `correct` is the answer number (1–4) or a letter (A–D).
+- `timeLimit` (seconds, 5–120) is optional; defaults to 20.
+- Invalid rows are skipped and reported; valid rows still import.
+
+Download a ready-made template from the **Import from sheet** screen.
+
+## REST API
+
+Quizzes:
 - `GET /api/quizzes` — list saved quizzes (metadata)
 - `GET /api/quizzes/:id` — full quiz
 - `POST /api/quizzes` — create (or update if body has an `id`)
+- `POST /api/quizzes/import` — create from CSV (`{ title, csv }` or raw `text/csv` body)
 - `DELETE /api/quizzes/:id` — delete
+
+Results:
+- `GET /api/results` — list past game results
+- `GET /api/results/:id` — full standings for one game
+- `GET /api/results/:id/csv` — download that game's results as CSV
+- `DELETE /api/results/:id` — delete a saved result
 
 ## Run locally
 
