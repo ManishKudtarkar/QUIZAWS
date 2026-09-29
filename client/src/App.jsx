@@ -7,8 +7,19 @@ import PlayerGame from "./screens/PlayerGame.jsx";
 //   "home"   -> choose to host or join
 //   "host"   -> build quiz + run the game
 //   "player" -> join with PIN + play
+// If the URL carries a ?pin= (from a scanned QR code), jump straight to Join.
+function initialMode() {
+  try {
+    return new URLSearchParams(window.location.search).get("pin")
+      ? "player"
+      : "home";
+  } catch {
+    return "home";
+  }
+}
+
 export default function App() {
-  const [mode, setMode] = useState("home");
+  const [mode, setMode] = useState(initialMode());
 
   if (mode === "host") return <HostGame onExit={() => setMode("home")} />;
   if (mode === "player") return <PlayerGame onExit={() => setMode("home")} />;

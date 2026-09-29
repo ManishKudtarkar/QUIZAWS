@@ -345,3 +345,35 @@ button:disabled {
     font-size: 1.4rem;
   }
 }
+
+/* Lobby: PIN + QR side by side */
+.lobby-join {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 16px 0 8px;
+}
+
+.pin-block {
+  text-align: center;
+}
+
+.pin-label {
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.qr-block {
+  text-align: center;
+}
+
+.join-url {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  word-break: break-all;
+  max-width: 220px;
+}

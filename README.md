@@ -7,6 +7,9 @@ Built to run as a single Node.js server (serves the web app + websockets), which
 ## Features
 
 - Host builds a quiz directly on the website (questions, up to 4 answers, mark the correct one, per-question time limit)
+- **Quizzes are saved** and persist across refreshes and server restarts, so you build once and host anytime
+- **My Quizzes** list with Go Live, Edit, and Delete
+- Going live shows a **6-digit PIN and a QR code** — students scan the QR (or enter the PIN) to join
 - Students join with a game PIN and a nickname — no accounts needed
 - Real-time question display and answering over WebSockets (Socket.IO)
 - Scoring rewards correct answers and speed (up to 1000 points per question), with answer streaks
@@ -14,9 +17,23 @@ Built to run as a single Node.js server (serves the web app + websockets), which
 
 ## Tech stack
 
-- **Frontend:** React + Vite (plain CSS)
+- **Frontend:** React + Vite (plain CSS), `qrcode` for the join QR code
 - **Backend:** Node.js + Express + Socket.IO
-- **State:** in-memory (no database) — game state lives for the duration of a session
+- **Quiz storage:** a JSON file on disk (`server/data/quizzes.json`) — quizzes persist across restarts
+- **Live game state:** in-memory — a running game (players, scores) lives only for that session
+
+## How data is stored
+
+There are two different kinds of data, stored differently:
+
+| Data | Where | Persists? |
+|---|---|---|
+| **Quizzes** you build | `server/data/quizzes.json` on disk | **Yes** — survives refresh and server restart |
+| **Live game state** (players, scores, current question) | server memory (RAM) | No — ends when the game ends or the server restarts |
+
+So the quizzes you create are saved and reusable. The per-game scores are live-only; if you want to keep a record of results after a game, that's a separate feature (ask and it can be added — JSON file or DynamoDB).
+
+The `server/data/` folder is created automatically on first run and is git-ignored (your quizzes aren't committed to the repo).
 
 ## Project structure
 
@@ -24,9 +41,11 @@ Built to run as a single Node.js server (serves the web app + websockets), which
 .
 ├── package.json          # server deps + build/start scripts
 ├── server/
-│   ├── index.js          # Express + Socket.IO server, serves client/dist in prod
+│   ├── index.js          # Express + Socket.IO server + REST API, serves client/dist in prod
 │   ├── game.js           # Game + GameManager: rooms, PIN, scoring, leaderboard
-│   └── sampleQuiz.js     # default quiz fallback
+│   ├── quizStore.js      # JSON-file quiz storage (CRUD)
+│   ├── sampleQuiz.js     # default quiz fallback
+│   └── data/             # created at runtime; holds quizzes.json (git-ignored)
 └── client/
     ├── index.html
     ├── vite.config.js    # dev proxy for /socket.io -> :3000
@@ -34,12 +53,22 @@ Built to run as a single Node.js server (serves the web app + websockets), which
         ├── App.jsx        # routes between Home / Host / Player
         ├── socket.js      # same-origin Socket.IO client
         ├── styles.css
+        ├── components/
+        │   └── QRCode.jsx      # renders the join QR code
         └── screens/
             ├── Home.jsx
-            ├── QuizBuilder.jsx  # host builds the quiz in-browser
-            ├── HostGame.jsx     # lobby, live questions, reveal, final results
-            └── PlayerGame.jsx   # join, answer, see results
+            ├── MyQuizzes.jsx    # saved quizzes: Go Live / Edit / Delete / Create
+            ├── QuizBuilder.jsx  # build/edit a quiz, saved to the server
+            ├── HostGame.jsx     # lobby (PIN + QR), live questions, reveal, results
+            └── PlayerGame.jsx   # join (PIN prefilled from QR), answer, see results
 ```
+
+## REST API (quizzes)
+
+- `GET /api/quizzes` — list saved quizzes (metadata)
+- `GET /api/quizzes/:id` — full quiz
+- `POST /api/quizzes` — create (or update if body has an `id`)
+- `DELETE /api/quizzes/:id` — delete
 
 ## Run locally
 
@@ -130,6 +159,7 @@ Game state here is in-memory, so a single instance is the simplest correct setup
 
 ## Notes & limits
 
-- **State is in-memory.** Restarting the server ends any active games. That's fine for classroom-style use; add a database only if you need to persist quizzes between runs.
-- **"Unlimited" players** is bounded by the instance's memory/CPU/connection limits. A single modest instance comfortably handles a classroom; use a larger instance (and the Redis adapter for multi-instance) for very large audiences.
+- **Quizzes persist; live games don't.** Your saved quizzes live in `server/data/quizzes.json` and survive restarts. A game in progress (players/scores) is in memory only, so restarting mid-game ends it. Fine for classroom-style use.
+- **Backing up quizzes:** copy `server/data/quizzes.json` somewhere safe if they matter. On EC2, this file lives on the instance's disk — it survives reboots and app restarts, but is lost if you **terminate** the instance. For durable, instance-independent storage, move to DynamoDB (ask and it can be wired in).
+- **Player capacity** is bounded by the instance's memory/CPU/connection limits. A single modest instance comfortably handles 100–200 students; use a larger instance (and the Redis adapter for multi-instance) for very large audiences.
 - No authentication — anyone with the site can host. Add auth if you expose it publicly and want to restrict hosting.

@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
-// Lets the host create a quiz directly in the browser: add questions,
-// type up to 4 answers, mark the correct one, set a time limit.
+// Create or edit a quiz in the browser, then SAVE it to the server so it
+// persists across refreshes and restarts. Saving returns to the quiz list.
+//   editId (optional) -> load an existing quiz to edit
+//   onSaved(quiz)      -> called after a successful save
+//   onExit()           -> back without saving
 
 function emptyQuestion() {
   return {
@@ -12,15 +15,42 @@ function emptyQuestion() {
   };
 }
 
-export default function QuizBuilder({ onStart, onExit }) {
+export default function QuizBuilder({ editId, onSaved, onExit }) {
   const [title, setTitle] = useState("");
   const [questions, setQuestions] = useState([emptyQuestion()]);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(!!editId);
+
+  // If editing, load the saved quiz and hydrate the form.
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/quizzes/${editId}`);
+        const data = await res.json();
+        if (data.quiz) {
+          setTitle(data.quiz.title);
+          // Pad answers back to 4 slots for editing convenience.
+          setQuestions(
+            data.quiz.questions.map((q) => ({
+              text: q.text,
+              answers: [...q.answers, "", "", "", ""].slice(0, 4),
+              correctIndex: q.correctIndex,
+              timeLimit: q.timeLimit,
+            }))
+          );
+        }
+      } catch {
+        setError("Could not load that quiz.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [editId]);
 
   function updateQuestion(qi, patch) {
-    setQuestions((prev) =>
-      prev.map((q, i) => (i === qi ? { ...q, ...patch } : q))
-    );
+    setQuestions((prev) => prev.map((q, i) => (i === qi ? { ...q, ...patch } : q)));
   }
 
   function updateAnswer(qi, ai, value) {
@@ -41,44 +71,72 @@ export default function QuizBuilder({ onStart, onExit }) {
     setQuestions((prev) => prev.filter((_, i) => i !== qi));
   }
 
-  function validateAndStart() {
-    // Build a clean quiz, dropping empty answer slots.
+  function buildCleanQuiz() {
     const cleaned = [];
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       const text = q.text.trim();
       const answers = q.answers.map((a) => a.trim()).filter((a) => a.length > 0);
       if (!text) {
-        return setError(`Question ${i + 1} needs text.`);
+        setError(`Question ${i + 1} needs text.`);
+        return null;
       }
       if (answers.length < 2) {
-        return setError(`Question ${i + 1} needs at least 2 answers.`);
+        setError(`Question ${i + 1} needs at least 2 answers.`);
+        return null;
       }
-      // Ensure the marked-correct answer isn't an empty slot that got dropped.
       const correctText = q.answers[q.correctIndex]?.trim();
       const correctIndex = correctText ? answers.indexOf(correctText) : -1;
       if (correctIndex < 0) {
-        return setError(`Question ${i + 1}: mark a non-empty answer as correct.`);
+        setError(`Question ${i + 1}: mark a non-empty answer as correct.`);
+        return null;
       }
-      cleaned.push({
-        text,
-        answers,
-        correctIndex,
-        timeLimit: q.timeLimit,
-      });
+      cleaned.push({ text, answers, correctIndex, timeLimit: q.timeLimit });
     }
     if (cleaned.length === 0) {
-      return setError("Add at least one question.");
+      setError("Add at least one question.");
+      return null;
     }
     setError("");
-    onStart({ title: title.trim() || "My Quiz", questions: cleaned });
+    return { title: title.trim() || "My Quiz", questions: cleaned };
+  }
+
+  async function save() {
+    const quiz = buildCleanQuiz();
+    if (!quiz) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/quizzes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editId ? { ...quiz, id: editId } : quiz),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Could not save the quiz.");
+        return;
+      }
+      onSaved(data.quiz);
+    } catch {
+      setError("Could not save the quiz. Is the server running?");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="screen center">
+        <p>Loading…</p>
+      </div>
+    );
   }
 
   return (
     <div className="screen">
       <div className="card wide">
         <div className="row">
-          <h1 style={{ fontSize: "1.8rem" }}>Build your quiz</h1>
+          <h1 style={{ fontSize: "1.8rem" }}>{editId ? "Edit quiz" : "Build your quiz"}</h1>
           <span className="spacer" />
           <button className="btn-secondary" onClick={onExit}>
             Back
@@ -164,8 +222,8 @@ export default function QuizBuilder({ onStart, onExit }) {
         {error && <div className="error">{error}</div>}
 
         <div style={{ height: 20 }} />
-        <button className="btn-primary" onClick={validateAndStart}>
-          Create game
+        <button className="btn-primary" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : editId ? "Save changes" : "Save quiz"}
         </button>
       </div>
     </div>

@@ -5,11 +5,13 @@ const { Server } = require("socket.io");
 
 const { GameManager } = require("./game");
 const sampleQuiz = require("./sampleQuiz");
+const { store, normalizeQuizContent } = require("./quizStore");
 
 const PORT = process.env.PORT || 3000;
 const CLIENT_DIST = path.join(__dirname, "..", "client", "dist");
 
 const app = express();
+app.use(express.json({ limit: "1mb" }));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }, // relaxed for dev; in prod the client is served from the same origin
@@ -18,40 +20,53 @@ const io = new Server(server, {
 const manager = new GameManager();
 
 // Basic validation so a malformed custom quiz can't crash the server.
+// Falls back to the sample quiz when nothing valid is provided.
 function normalizeQuiz(quiz) {
-  if (!quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
-    return sampleQuiz;
-  }
-  const questions = quiz.questions
-    .filter(
-      (q) =>
-        q &&
-        typeof q.text === "string" &&
-        Array.isArray(q.answers) &&
-        q.answers.length >= 2 &&
-        Number.isInteger(q.correctIndex) &&
-        q.correctIndex >= 0 &&
-        q.correctIndex < q.answers.length
-    )
-    .map((q) => ({
-      text: String(q.text).slice(0, 300),
-      answers: q.answers.slice(0, 4).map((a) => String(a).slice(0, 120)),
-      correctIndex: q.correctIndex,
-      timeLimit:
-        Number.isFinite(q.timeLimit) && q.timeLimit >= 5 && q.timeLimit <= 120
-          ? Math.round(q.timeLimit)
-          : 20,
-    }))
-    .filter((q) => q.correctIndex < q.answers.length);
-
-  if (questions.length === 0) return sampleQuiz;
-  return { title: String(quiz.title || "Untitled Quiz").slice(0, 120), questions };
+  const cleaned = normalizeQuizContent(quiz);
+  return cleaned || sampleQuiz;
 }
+
+// --- REST API: persistent quizzes ---
+app.get("/api/quizzes", (_req, res) => {
+  res.json({ quizzes: store.list() });
+});
+
+app.get("/api/quizzes/:id", (req, res) => {
+  const quiz = store.get(req.params.id);
+  if (!quiz) return res.status(404).json({ error: "Quiz not found." });
+  res.json({ quiz });
+});
+
+app.post("/api/quizzes", (req, res) => {
+  const saved = store.save(req.body || {});
+  if (!saved) {
+    return res
+      .status(400)
+      .json({ error: "Invalid quiz. Need a title and at least one valid question." });
+  }
+  res.json({ quiz: saved });
+});
+
+app.delete("/api/quizzes/:id", (req, res) => {
+  const removed = store.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: "Quiz not found." });
+  res.json({ ok: true });
+});
 
 io.on("connection", (socket) => {
   // --- Host creates a game ---
+  // Accepts either a saved quizId (preferred) or an inline quiz object.
   socket.on("host:create", (payload, ack) => {
-    const quiz = normalizeQuiz(payload && payload.quiz);
+    let quiz;
+    if (payload && payload.quizId) {
+      const saved = store.get(payload.quizId);
+      if (!saved) {
+        return ack && ack({ ok: false, error: "Saved quiz not found." });
+      }
+      quiz = { title: saved.title, questions: saved.questions };
+    } else {
+      quiz = normalizeQuiz(payload && payload.quiz);
+    }
     const game = manager.createGame(socket.id, quiz);
     socket.join(game.pin);
     if (typeof ack === "function") {

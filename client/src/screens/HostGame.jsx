@@ -2,18 +2,22 @@ import React, { useEffect, useRef, useState } from "react";
 import { socket } from "../socket.js";
 import { SHAPES } from "../shapes.js";
 import QuizBuilder from "./QuizBuilder.jsx";
+import MyQuizzes from "./MyQuizzes.jsx";
+import QRCode from "../components/QRCode.jsx";
 
 // Host flow phases:
-//   "build"    -> QuizBuilder
-//   "lobby"    -> show PIN, wait for players
+//   "list"     -> MyQuizzes (saved quizzes; Go Live / Edit / Create)
+//   "build"    -> QuizBuilder (create new)
+//   "edit"     -> QuizBuilder (edit existing)
+//   "lobby"    -> show PIN + QR, wait for players
 //   "question" -> question is live, players answering
 //   "reveal"   -> show correct answer + leaderboard
 //   "ended"    -> final leaderboard
 export default function HostGame({ onExit }) {
-  const [phase, setPhase] = useState("build");
+  const [phase, setPhase] = useState("list");
+  const [editId, setEditId] = useState(null);
   const [pin, setPin] = useState("");
   const [title, setTitle] = useState("");
-  const [total, setTotal] = useState(0);
   const [players, setPlayers] = useState([]);
   const [question, setQuestion] = useState(null);
   const [results, setResults] = useState(null);
@@ -22,7 +26,6 @@ export default function HostGame({ onExit }) {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef(null);
 
-  // Wire up socket listeners once.
   useEffect(() => {
     socket.on("lobby:update", ({ players }) => setPlayers(players));
     socket.on("answers:count", (c) => setAnswerCount(c));
@@ -71,12 +74,13 @@ export default function HostGame({ onExit }) {
     }, 1000);
   }
 
-  function createGame(quiz) {
-    socket.emit("host:create", { quiz }, (res) => {
+  // Go live with a saved quiz (by id).
+  function goLive(quizId) {
+    socket.emit("host:create", { quizId }, (res) => {
       if (res && res.ok) {
         setPin(res.pin);
         setTitle(res.title);
-        setTotal(res.total);
+        setPlayers([]);
         setPhase("lobby");
       }
     });
@@ -85,9 +89,7 @@ export default function HostGame({ onExit }) {
   function nextQuestion() {
     socket.emit("host:next", {}, (res) => {
       if (!res || !res.ok) return;
-      if (res.ended) return; // game:ended event handles UI
     });
-    // The question:show event drives what the players see; the host mirrors it.
     socket.once("question:show", (q) => {
       setQuestion(q);
       setResults(null);
@@ -101,18 +103,55 @@ export default function HostGame({ onExit }) {
     socket.emit("host:endQuestion", {}, () => {});
   }
 
+  // Join URL for the QR code: same origin, prefilled with the PIN.
+  const joinUrl = `${window.location.origin}/?pin=${pin}`;
+
   // ---- Render per phase ----
 
-  if (phase === "build") {
-    return <QuizBuilder onStart={createGame} onExit={onExit} />;
+  if (phase === "list") {
+    return (
+      <MyQuizzes
+        onGoLive={goLive}
+        onCreate={() => {
+          setEditId(null);
+          setPhase("build");
+        }}
+        onEdit={(id) => {
+          setEditId(id);
+          setPhase("edit");
+        }}
+        onExit={onExit}
+      />
+    );
+  }
+
+  if (phase === "build" || phase === "edit") {
+    return (
+      <QuizBuilder
+        editId={phase === "edit" ? editId : null}
+        onSaved={() => setPhase("list")}
+        onExit={() => setPhase("list")}
+      />
+    );
   }
 
   if (phase === "lobby") {
     return (
       <div className="screen center">
         <h1 className="brand">{title}</h1>
-        <p className="subtitle">Students join at this site with the PIN:</p>
-        <div className="pin-display">{pin}</div>
+        <p className="subtitle">Scan the QR code, or go to the site and enter the PIN.</p>
+
+        <div className="lobby-join">
+          <div className="pin-block">
+            <div className="pin-label">Game PIN</div>
+            <div className="pin-display">{pin}</div>
+          </div>
+          <div className="qr-block">
+            <QRCode text={joinUrl} size={200} />
+            <div className="join-url">{joinUrl}</div>
+          </div>
+        </div>
+
         <div className="count-pill">
           {players.length} player{players.length === 1 ? "" : "s"} joined
         </div>
@@ -132,7 +171,7 @@ export default function HostGame({ onExit }) {
         >
           Start quiz
         </button>
-        <button className="btn-ghost" onClick={onExit}>
+        <button className="btn-ghost" onClick={() => setPhase("list")}>
           Cancel
         </button>
       </div>
@@ -222,8 +261,8 @@ export default function HostGame({ onExit }) {
             </li>
           ))}
         </ol>
-        <button className="btn-primary" style={{ maxWidth: 300 }} onClick={onExit}>
-          Back to home
+        <button className="btn-primary" style={{ maxWidth: 300 }} onClick={() => setPhase("list")}>
+          Back to my quizzes
         </button>
       </div>
     );

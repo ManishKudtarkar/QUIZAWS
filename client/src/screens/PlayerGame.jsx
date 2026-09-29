@@ -9,9 +9,19 @@ import { SHAPES } from "../shapes.js";
 //   "answered" -> waiting for reveal
 //   "result"   -> right/wrong + score
 //   "ended"    -> game over
+// Read a PIN passed in the URL (?pin=123456) so a QR-code scan prefills it.
+function pinFromUrl() {
+  try {
+    const p = new URLSearchParams(window.location.search).get("pin") || "";
+    return p.replace(/\D/g, "").slice(0, 6);
+  } catch {
+    return "";
+  }
+}
+
 export default function PlayerGame({ onExit }) {
   const [phase, setPhase] = useState("join");
-  const [pin, setPin] = useState("");
+  const [pin, setPin] = useState(pinFromUrl());
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
